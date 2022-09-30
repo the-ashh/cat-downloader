@@ -4,7 +4,7 @@ import wget
 import os
 import re
 import telebot
-
+from moviepy.editor import VideoFileClip
 
 if not os.path.exists(config.output_dir):
     os.makedirs(config.output_dir)
@@ -19,8 +19,10 @@ bot = telebot.TeleBot(config.telegram_secret_key, parse_mode=None)
 
 def get_media_link(id):
     tweet = twitter_api.get_status(id)._json
-
+    gif = False
     if "video_info" in tweet["extended_entities"]["media"][0]:
+        if tweet["extended_entities"]["media"][0]["type"] == "animated_gif":
+            gif = True
         vid_dict = {}
         big_bitrate = 0
         big_vid = 0
@@ -33,13 +35,18 @@ def get_media_link(id):
             if vid_dict[i]["bitrate"] > big_bitrate:
                 big_bitrate = vid_dict[i]["bitrate"]
                 big_vid = i
-        return(vid_dict[big_vid]["url"])
+        return([vid_dict[big_vid]["url"], gif])
 
     else: 
-        return(tweet['entities']['media'][0]['media_url'])
+        return([tweet['entities']['media'][0]['media_url'], gif])
     
-def download_and_sort_cat(url, output):
+def download_and_sort_cat(url, output, gif = False):
     download_name = wget.download(url, output)
+    if gif:
+        videoClip = VideoFileClip(download_name)
+        videoClip.write_gif(os.path.splitext(download_name)[0] + ".gif")
+        os.remove(download_name)
+        download_name = os.path.splitext(download_name)[0] + ".gif"
     file_extension = os.path.splitext(download_name)[1]
     files = os.listdir(output)
     count = 0
@@ -60,7 +67,7 @@ def help(message):
 	bot.reply_to(message, "if u need to type /help, this bot is not for u, srry bestie <3")
 
 @bot.message_handler(func=lambda m: True)
-def bot(message):
+def cat_bot(message):
     if not message.from_user.id == config.telegram_user_id:
         bot.reply_to(message, "srry bestie, this bot is not for you <3")
         return
@@ -68,7 +75,7 @@ def bot(message):
     if "https://twitter.com" in message.text:
         tweet_id = get_tweet_id(message.text)
         tweet_media_link = get_media_link(tweet_id)
-        cat_name = download_and_sort_cat(tweet_media_link, config.output_dir)
+        cat_name = download_and_sort_cat(tweet_media_link[0], config.output_dir, tweet_media_link[1])
         bot.reply_to(message, "downloaded the cat as " + cat_name + ". enjoy :D")
     else:
         bot.reply_to(message, "not a twitter link, sorry D:")
